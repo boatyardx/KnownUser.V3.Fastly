@@ -1,71 +1,92 @@
-# KnownUser.V3.Fastly
+# Queue-it connector for Fastly integration
 
-Before getting started please read the [documentation](https://github.com/queueit/Documentation/tree/main/edge-connectors) to get acquainted with edge connectors.
+This connector is a package that can be added in the Fastly platform in order to integrate Queue-it into Fastly.
 
-This Fastly Queue-it Connector (aka, Queue-it's server-side KnownUser connector) uses a Compute@Edge service to
-integrate Queue-it's functionality into Fastly's network.
+You can add this package by navigating to Fastly > Compute resources > Service Configuration > Package
 
-A Wasm service is required to utilize this connector.
+The official repo has a released package that uses env vars for the secrets (adding the secrets into fastly dictionary is enough).
+But this one has the secrets hardcoded and they need to be added in before building the package.
 
-> You can find the latest released version [here](https://github.com/queueit/KnownUser.V3.Fastly/releases/latest).
+Otherwise the Queue-it integration will be broken.
 
-## Installation
+> *Note* The scope of this custom built connector is to add in new features to it. In this case is the retrieval of the client IP.
 
-There are two methods of installation:
 
-### As a standalone service
+## How to use this connector
 
-- Go to the Fastly services page and create a new **Wasm** service.
-- Go to Domains and fill in the domain that you want your service to be reachable at. You may need to register a CNAME
-  record if you have your own domain.
-- Then click on *Origins* and add a new host that has the hostname of your origin server.  
-  You need to edit the Host and name it **origin**.
-- Create a second host that has the hostname of `{yourCustomerId}.queue-it.net` and name it **queue-it**.  
-  Edit the host, go to advanced options and fill in the same hostname in **Override host**
-- Go to **Dictionaries** and create a new dictionary named `IntegrationConfiguration`.  
-  Add the following items in the dictionary:
-    - customerId: Your customer ID
-    - apiKey: The API key for your account
-    - secret: Your KnownUserV3 secret
-    - queueItOrigin: The name of the queue-it host, in this case it's `queue-it`  
-      You can find these values in the Go Queue-It self-service platform.
-- Download the latest package file (release-package.tar.gz) from the releases page and unarchive it.
-- Edit the `fastly.toml` file and copy the ID of your service (you can see this by opening up the service in Fastly) and
-  replace __{YourServiceId}__ with it.
-- Archive the directory in the same format (tar.gz).
-- Go to `Package` in the Fastly service page and upload the package.
-- To finish up and deploy your service click on the **Activate** button.
+Go to [assembly/index.ts](assembly/index.ts) and update the secrets
+They should look something like this
 
-### Customizable service with the connector
+```ts
+const integrationDetails = new IntegrationDetails(
+        "queue-it_origin_name",
+        "customer_ID",
+        "Secret_Key",
+        "API_key",
+        "workerHost" //the worker host is actually the fastly domain of your compute resource.
+);
+```
+These secrets should be all stored in the fastly dictionary on each compute resource.
+In case they are not there, they can be retrieved from queue-it platform.
 
-- Go to the Fastly services page and create a new **Wasm** service and copy it's ID.
-- Clone this repository and edit the fastly.toml file, make sure to set the `service_id` field to the ID you copied.
-- Then click on *Origins* and add a new host that has the hostname of your origin server.   
-  You can name the host **origin** or whatever you choose.
-- Create a host that has the hostname of `{yourCustomerId}.queue-it.net` and name it **queue-it**.    
-  Edit the host, go to advanced options and fill in the same hostname in **Override host**
-- Open up the service in Fastly and go to **Dictionaries** and create a new dictionary named `IntegrationConfiguration`
-  .  
-  Add the following items in the dictionary:
-    - customerId: Your customer ID
-    - apiKey: The API key for your account
-    - secret: Your KnownUserV3 secret
-    - queueItOrigin: The name of the queue-it origin, in this case it's `queue-it`  
-      You can find these values in the Go Queue-It self-service platform.
-- You need to add some code that uses this connector. Here is an example:
+Just make sure the workerhost matches your fastly compute resource domain.
+
+Afterwards you need to go to the [fastly.toml](fastly.toml) file and add in the Service ID and update the name for easier tracking
+
+```ts
+name = "connector-service-uat"
+service_id = "vm123456789001"
+```
+
+Now you just need to run
+```
+fastly compute build
+```
+
+A new directory has appeared, called pkg.
+
+Upload the file named connector-service-uat.tar.gz into Fastly (Fastly > Compute resource > Service Configuration > Package)
+
+Once you’ve activated the new service version, fastly applies the new connector in 2-3 mins (the switch will be done in background, no down-time)
+
+
+## Dependencies
+
+You need to have *npm* and *fastly* installed in order to go through these steps.
+
+You can install those on MacOS by running these commands
+
+```
+brew install node
+brew install fastly/tap/fastly
+```
+
+## Update this package or create a new connector from scratch
+
+In order to create a new connector from scratch you can use this commands
+
+```
+mkdir new && cd new
+fastly compute init
+npm install @queue-it/fastly
+```
+
+Navigate to assembly/index.ts and replace the content entirely with
 
 ```ts
 import {Fastly} from "@fastly/as-compute";
 import {onQueueITRequest, IntegrationDetails, onQueueITResponse} from "@queue-it/fastly";
 
 const req = Fastly.getClientRequest();
+req.headers.set("x-true-client-ip", Fastly.getClientIpAddressString());
 
 // This is optional and can be null if it's specified in your Dictionary
 const integrationDetails = new IntegrationDetails(
         "QueueItOriginName",
         "CustomerId",
         "SecretKey",
-        "ApiKey");
+        "ApiKey",
+        "workerHost");
 let res = onQueueITRequest(req, integrationDetails);
 
 if (res != null) {
@@ -82,6 +103,6 @@ if (res != null) {
 } 
 ```
 
-- Build and deploy the package running `fastly compute build` and `fastly compute deploy` in the same directory.
-- Create desired waiting room(s), triggers, and actions in the Go Queue-It self-service platform.  
-  Then, save/publish the configuration.
+> *Note:* Here the x-true-client-ip can be replaced with any naming you desire. Recommended to be different from the API call "ClientIpAddress"
+
+Afterwards you just need to add in the secrets as mentioned in the first steps.
