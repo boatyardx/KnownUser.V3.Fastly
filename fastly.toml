@@ -2,7 +2,7 @@
 # https://developer.fastly.com/reference/fastly-toml/
 
 authors = [""]
-description = "hardcoded.Queue-it connector for Fastly"
+description = "Queue-it connector for Fastly. Dictionary retrieved secrets"
 language = "assemblyscript"
 manifest_version = 3
 name = "connector-service-uat"
